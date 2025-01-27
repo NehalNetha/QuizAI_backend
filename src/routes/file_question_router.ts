@@ -1,5 +1,10 @@
 import { Router } from "express";
-import { generateQuestionsFromFileHandler, upload } from "../controllers/file_quiz_controller";
+import { 
+  generateQuestionsFromFileHandler, 
+  upload,
+  getUserFiles,
+  deleteFile
+} from "../controllers/file_quiz_controller";
 
 const fileRouter = Router();
 
@@ -39,5 +44,9 @@ fileRouter.post(
   uploadMiddleware,
   generateQuestionsFromFileHandler
 );
+
+// Add new routes
+fileRouter.get('/files', getUserFiles);
+fileRouter.delete('/files/:fileId', deleteFile);
 
 export default fileRouter;

@@ -116,10 +116,12 @@ export const generateQuestionsFromFileHandler = async (
   res: Response
 ): Promise<any> => {
   try {
-    // Validate file existence
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded." });
     }
+
+    // Get original file name without extension
+    const titleFileName = req.file.originalname.replace(/\.[^/.]+$/, "");
 
     // Parse settings from form data
     let settings: GenerateQuestionsWithSettings;
@@ -177,13 +179,62 @@ export const generateQuestionsFromFileHandler = async (
     // Generate questions using the extracted content
     const questions = await generateQuestions(settings, content);
     
-    // Return just the questions array instead of spreading it
-    return res.json(questions);
+    // Return questions array along with the file name
+    return res.json({
+      questions,
+      title: titleFileName
+    });
 
   } catch (error) {
     console.error("Error generating questions from file:", error);
     return res.status(500).json({ 
       error: "An error occurred while generating questions from the file." 
     });
+  }
+};
+// Add these new functions to your existing controller
+
+export const getUserFiles = async (req: Request, res: Response) => {
+  try {
+    const userId = req.user?.id; // Assuming you have user info in request
+    
+    const { data, error } = await supabase
+      .storage
+      .from(process.env.SUPABASE_STORAGE_BUCKET || 'documents')
+      .list(userId?.toString() || '');
+
+    if (error) throw error;
+
+    const files = data.map(file => ({
+      id: file.id,
+      name: file.name,
+      created_at: file.created_at,
+      size: file.metadata?.size || 0,
+      type: file.metadata?.mimetype || 'unknown'
+    }));
+
+    res.json(files);
+  } catch (error) {
+    console.error('Error fetching files:', error);
+    res.status(500).json({ error: 'Failed to fetch files' });
+  }
+};
+
+export const deleteFile = async (req: Request, res: Response) => {
+  try {
+    const { fileId } = req.params;
+    const userId = req.user?.id;
+
+    const { error } = await supabase
+      .storage
+      .from(process.env.SUPABASE_STORAGE_BUCKET || 'documents')
+      .remove([`${userId}/${fileId}`]);
+
+    if (error) throw error;
+
+    res.json({ message: 'File deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting file:', error);
+    res.status(500).json({ error: 'Failed to delete file' });
   }
 };
