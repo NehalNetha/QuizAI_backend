@@ -7,6 +7,7 @@ import cors from 'cors';
 import quizRouter from './routes/quiz_router';
 import { initializeGameSockets } from './controllers/game_controller';
 import fileRouter from './routes/file_question_router';
+import dashboardRouter from './routes/dashboard_router';
 
 dotenv.config();
 
@@ -38,6 +39,7 @@ app.use('/api', quizRouter);
 
 app.use("/api", questionRouter)
 app.use("/api", fileRouter)
+app.use("/api", dashboardRouter)
 
 
 app.get('/hello/:name', (req: Request, res: Response) => {

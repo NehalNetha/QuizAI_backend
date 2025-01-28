@@ -1,4 +1,6 @@
 import { Server, Socket } from 'socket.io';
+import { updateDashboardStats } from './dashboardStats';
+import { getDashboardStats } from './dashboardStats';
 
 
 interface GameRoom {
@@ -13,13 +15,14 @@ interface GameRoom {
     timeRemaining: number;
     gameState: 'waiting' | 'playing' | 'finished';
     timer?: NodeJS.Timeout;
+    settings?: any;
+
 }
 
 const gameRooms = new Map<string, GameRoom>();
 
 export const initializeGameSockets = (io: Server) => {
     io.on('connection', (socket: Socket) => {
-        console.log('User connected:', socket.id);
 
         socket.on('create-game', (quizData: any) => {
             const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -51,7 +54,7 @@ export const initializeGameSockets = (io: Server) => {
         });
 
         // Join an existing game room
-        socket.on('join-game', (roomCode: string, playerName: string) => {
+        socket.on('join-game', async (roomCode: string, playerName: string) => {
             const room = gameRooms.get(roomCode);
             
             if (!room) {
@@ -66,6 +69,17 @@ export const initializeGameSockets = (io: Server) => {
                 score: 0
             });
             
+            // Update total players in dashboard stats
+            try {
+                const hostId = room.hostId;
+                const stats = await getDashboardStats(hostId);
+                await updateDashboardStats(hostId, {
+                    total_players: (stats.total_players || 0) + 1
+                });
+            } catch (error) {
+                console.error('Error updating player stats:', error);
+            }
+
             socket.join(roomCode);
 
             socket.emit('joined-game', { 
@@ -112,7 +126,6 @@ export const initializeGameSockets = (io: Server) => {
             }
         });
     socket.on('join-game-session', ({ roomCode, playerName, isHost }) => {
-        console.log('Join game session request:', { roomCode, playerName, isHost });
         const room = gameRooms.get(roomCode);
         
         if (!room) {
@@ -180,23 +193,87 @@ export const initializeGameSockets = (io: Server) => {
                 }
             }
         });
-        socket.on('start-game', ({ roomCode }) => {
+        socket.on('start-game', ({ roomCode, questions, settings }) => {
             const room = gameRooms.get(roomCode);
             if (room && socket.id === room.hostId) {
                 room.gameState = 'playing';
                 room.currentQuestion = 0;
-                room.timeRemaining = 30;
+                room.timeRemaining = settings?.timeLimit || 30;
+                room.settings = settings; // Store settings in room
 
-                // Start the game timer
+                // Start the game timer with custom time limit
                 startGameTimer(io, roomCode, room);
 
                 io.to(roomCode).emit('game-started', { 
                     roomCode,
                     quiz: room.quiz,
-                    players: room.players 
+                    players: room.players,
+                    settings: settings
                 });
             }
         });
+
+        // Update the startGameTimer function to use custom time limit
+        function startGameTimer(io: Server, roomCode: string, room: GameRoom) {
+            if (room.timer) {
+                clearInterval(room.timer);
+            }
+        
+            const timeLimit = room.settings?.timeLimit || 30;
+            room.timeRemaining = timeLimit;
+            
+            room.timer = setInterval(() => {
+                room.timeRemaining--;
+        
+                io.to(roomCode).emit('time-update', { timeRemaining: room.timeRemaining });
+        
+                if (room.timeRemaining <= 0) {
+                    clearInterval(room.timer);
+                    
+                    const currentLeaderboard = getLeaderboard(room);
+                    io.to(roomCode).emit('show-leaderboard', {
+                        leaderboard: currentLeaderboard,
+                        isEndOfGame: room.currentQuestion >= room.quiz.questions.length - 1
+                    });
+        
+                    setTimeout(() => {
+                        if (room.currentQuestion < room.quiz.questions.length - 1) {
+                            room.currentQuestion++;
+                            room.timeRemaining = timeLimit; // Use custom time limit for next question
+                            
+                            io.to(roomCode).emit('next-question', {
+                                currentQuestion: room.currentQuestion,
+                                timeRemaining: room.timeRemaining,
+                                leaderboard: currentLeaderboard
+                            });
+        
+                            startGameTimer(io, roomCode, room);
+                        } else {
+                            room.gameState = 'finished';
+                            io.to(roomCode).emit('game-over', {
+                                finalLeaderboard: currentLeaderboard
+                            });
+                        }
+                    }, 5000);
+                }
+            }, 1000);
+        }
+
+        // Update the GameRoom interface to include settings
+        interface GameRoom {
+            hostId: string;
+            players: Array<{
+                id: string;
+                name: string;
+                score: number;
+            }>;
+            quiz?: any;
+            currentQuestion: number;
+            timeRemaining: number;
+            gameState: 'waiting' | 'playing' | 'finished';
+            timer?: NodeJS.Timeout;
+            settings?: any;
+        }
 
         socket.on('submit-answer', ({ roomCode, answer, questionId }) => {
             const room = gameRooms.get(roomCode);
@@ -206,16 +283,7 @@ export const initializeGameSockets = (io: Server) => {
             if (!player) return;
 
             const currentQuestion = room.quiz.questions[room.currentQuestion];
-            console.log('Current question:', currentQuestion);
-            console.log('Answer submission:', {
-                playerName: player.name,
-                submittedAnswer: answer,
-                correctAnswer: currentQuestion.correct_answer,
-                questionId,
-                currentQuestionId: currentQuestion.id,
-                currentQuestionFull: currentQuestion
-            });
-
+       
             if (currentQuestion.id === questionId) {
                 const isCorrect = answer === currentQuestion.correct_answer;
                 const timeBonus = Math.floor(room.timeRemaining / 2);
@@ -223,13 +291,7 @@ export const initializeGameSockets = (io: Server) => {
 
                 player.score += points;
 
-                console.log('Score calculation:', {
-                    playerName: player.name,
-                    isCorrect,
-                    timeBonus,
-                    points,
-                    totalScore: player.score
-                });
+              
 
                 io.to(roomCode).emit('answer-submitted', {
                     playerId: socket.id,

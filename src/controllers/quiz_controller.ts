@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { getQuizzesByUserId, saveQuiz } from '../models/saveQuiz';
 import supabase from '../config/supabaseLib';
+import { updateDashboardStats } from './dashboardStats';
 
 export const createQuiz = async (req: Request, res: Response): Promise<any> => {
     try {
@@ -36,13 +37,16 @@ export const createQuiz = async (req: Request, res: Response): Promise<any> => {
             user_id: user.id
         }
 
-        const data = await saveQuiz(quizData)
+        const data = await saveQuiz(quizData);
+        // Update dashboard stats
+        await updateDashboardStats(user.id, {
+            total_quizzes: (await getQuizzesByUserId(user.id)).length
+        });
 
-      return res.status(200).json({
-        message: 'Quiz saved successfully',
-        data
-      });
-
+        return res.status(200).json({
+            message: 'Quiz saved successfully',
+            data
+        });
 
     } catch (error: any) {
         console.error('Error processing request:', error);
@@ -84,9 +88,7 @@ export const getQuizById = async (req: Request, res: Response): Promise<any> => 
         const quizId = req.params.quizId;
 
         // Add request logging
-        console.log(`Quiz Request - Time: ${new Date().toISOString()}`);
-        console.log(`Quiz ID: ${quizId}`);
-        console.log(`Requested by User - ID: ${user?.id}, Email: ${user?.email}`);
+    
 
         if (!user?.email || !user?.id) {
             return res.status(401).json({ error: 'Authentication required or user not found' });
@@ -117,7 +119,6 @@ export const getQuizById = async (req: Request, res: Response): Promise<any> => 
         }
 
         // Log the complete data for debugging
-        console.log('Raw quiz data:', JSON.stringify(data, null, 2));
 
         if (!data.questions || !Array.isArray(data.questions)) {
             console.error('Invalid questions data in quiz:', data);

@@ -28,12 +28,7 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
         // Verify the token
         const { data, error } = await supabase.auth.getUser(token);
         
-        console.log('Supabase auth response:', { 
-            hasData: !!data, 
-            hasUser: !!data?.user,
-            error: error
-        });
-
+      
         if (error) {
             return res.status(401).json({ 
                 error: 'Authentication failed',
@@ -55,10 +50,7 @@ export const authMiddleware = async (req: Request, res: Response, next: NextFunc
             email: data.user.email
         } as SessionUser;
 
-        console.log('User authenticated successfully:', {
-            id: data.user.id,
-            email: data.user.email
-        });
+      
 
         next();
     } catch (error: any) {
