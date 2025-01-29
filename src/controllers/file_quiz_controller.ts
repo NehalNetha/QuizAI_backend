@@ -22,7 +22,7 @@ const buildPrompt = (settings: GenerateQuestionsWithSettings, content: string): 
   } = settings;
 
   const typePrompt = questionType === "mixed"
-    ? "The questions can be multiple-choice, true-false, or short-answer."
+    ? "The questions can be either multiple-choice or true-false."
     : `The questions should be ${questionType.replace("-", " ")}.`;
 
   const difficultyPrompt = difficulty
@@ -42,15 +42,15 @@ const buildPrompt = (settings: GenerateQuestionsWithSettings, content: string): 
     
     Each question object should follow these rules:
     - For multiple-choice questions, include:
-      - A "question" field (string).
-      - An "options" field (array of strings).
-      - A "correctAnswer" field (string).
+      - A "question" field (string)
+      - An "options" field (array of strings)
+      - A "correctAnswer" field (string, must be one of the options)
+      - A "type" field with value "multiple-choice"
     - For true-false questions, include:
-      - A "question" field (string).
-      - A "correctAnswer" field (boolean).
-    - For short-answer questions, include:
-      - A "question" field (string).
-      - You can omit the "options" and "correctAnswer" fields.
+      - A "question" field (string)
+      - An "options" field with exactly ["True", "False"]
+      - A "correctAnswer" field (string, either "True" or "False")
+      - A "type" field with value "true-false"
     
     Content to generate questions from:
     ${content}

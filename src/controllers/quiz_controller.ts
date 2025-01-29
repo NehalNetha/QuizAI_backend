@@ -16,12 +16,27 @@ export const createQuiz = async (req: Request, res: Response): Promise<any> => {
             return res.status(400).json({ error: 'Invalid questions data' });
         }
 
-        // Validate question structure
-        const isValidQuestionStructure = questions.every(q =>
-            typeof q.question === 'string' &&
-            Array.isArray(q.options) &&
-            typeof q.correctAnswer === 'string'
-        );
+        // Updated validation to handle both multiple-choice and true-false questions
+        const isValidQuestionStructure = questions.every(q => {
+            const hasValidBasicStructure = 
+                typeof q.question === 'string' &&
+                Array.isArray(q.options) &&
+                typeof q.correctAnswer === 'string' &&
+                ['multiple-choice', 'true-false'].includes(q.type);
+
+            if (!hasValidBasicStructure) return false;
+
+            // Additional validation for true-false questions
+            if (q.type === 'true-false') {
+                return q.options.length === 2 &&
+                    q.options.includes('True') &&
+                    q.options.includes('False') &&
+                    (q.correctAnswer === 'True' || q.correctAnswer === 'False');
+            }
+
+            // Validation for multiple-choice questions
+            return q.options.length >= 2 && q.options.includes(q.correctAnswer);
+        });
 
         if (!isValidQuestionStructure) {
             return res.status(400).json({ error: 'Invalid question structure' });

@@ -9,6 +9,7 @@ interface GameRoom {
         id: string;
         name: string;
         score: number;
+        currentAnswer?: string
     }>;
     quiz?: any;
     currentQuestion: number;
@@ -283,16 +284,15 @@ export const initializeGameSockets = (io: Server) => {
             if (!player) return;
 
             const currentQuestion = room.quiz.questions[room.currentQuestion];
-       
+           
             if (currentQuestion.id === questionId) {
+                player.currentAnswer = answer; // Store the current answer
                 const isCorrect = answer === currentQuestion.correct_answer;
                 const timeBonus = Math.floor(room.timeRemaining / 2);
                 const points = isCorrect ? (1000 + timeBonus) : 0;
-
+    
                 player.score += points;
-
-              
-
+    
                 io.to(roomCode).emit('answer-submitted', {
                     playerId: socket.id,
                     playerName: player.name,
@@ -309,50 +309,6 @@ export const initializeGameSockets = (io: Server) => {
 
 
 
-function startGameTimer(io: Server, roomCode: string, room: GameRoom) {
-    if (room.timer) {
-        clearInterval(room.timer);
-    }
-
-    room.timeRemaining = 30;
-    room.timer = setInterval(() => {
-        room.timeRemaining--;
-
-        io.to(roomCode).emit('time-update', { timeRemaining: room.timeRemaining });
-
-        if (room.timeRemaining <= 0) {
-            clearInterval(room.timer);
-            
-            // Show leaderboard for 5 seconds before next question
-            const currentLeaderboard = getLeaderboard(room);
-            io.to(roomCode).emit('show-leaderboard', {
-                leaderboard: currentLeaderboard,
-                isEndOfGame: room.currentQuestion >= room.quiz.questions.length - 1
-            });
-
-            // Wait 5 seconds before moving to next question
-            setTimeout(() => {
-                if (room.currentQuestion < room.quiz.questions.length - 1) {
-                    room.currentQuestion++;
-                    room.timeRemaining = 30;
-                    
-                    io.to(roomCode).emit('next-question', {
-                        currentQuestion: room.currentQuestion,
-                        timeRemaining: room.timeRemaining,
-                        leaderboard: currentLeaderboard
-                    });
-
-                    startGameTimer(io, roomCode, room);
-                } else {
-                    room.gameState = 'finished';
-                    io.to(roomCode).emit('game-over', {
-                        finalLeaderboard: currentLeaderboard
-                    });
-                }
-            }, 5000);
-        }
-    }, 1000);
-}
 
 function getLeaderboard(room: GameRoom) {
     return room.players
@@ -364,3 +320,5 @@ function getLeaderboard(room: GameRoom) {
             position: index + 1
         }));
 }
+
+

@@ -3,6 +3,7 @@ import { GenerateQuestionsWithSettings } from '../types/questions';
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import dotenv from 'dotenv';
+import { getUserCreditsService } from '../config/credits_service';
 dotenv.config();
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
@@ -17,7 +18,7 @@ const buildPrompt = (settings: GenerateQuestionsWithSettings): string => {
   } = settings;
 
   const typePrompt = questionType === "mixed"
-    ? "The questions can be multiple-choice, true-false, or short-answer."
+    ? "The questions can be either multiple-choice or true-false."
     : `The questions should be ${questionType.replace("-", " ")}.`;
 
   const difficultyPrompt = difficulty
@@ -37,15 +38,15 @@ const buildPrompt = (settings: GenerateQuestionsWithSettings): string => {
     
     Each question object should follow these rules:
     - For multiple-choice questions, include:
-      - A "question" field (string).
-      - An "options" field (array of strings).
-      - A "correctAnswer" field (string).
+      - A "question" field (string)
+      - An "options" field (array of strings)
+      - A "correctAnswer" field (string, must be one of the options)
+      - A "type" field with value "multiple-choice"
     - For true-false questions, include:
-      - A "question" field (string).
-      - A "correctAnswer" field (boolean).
-    - For short-answer questions, include:
-      - A "question" field (string).
-      - You can omit the "options" and "correctAnswer" fields.
+      - A "question" field (string)
+      - An "options" field with exactly ["True", "False"]
+      - A "correctAnswer" field (string, either "True" or "False")
+      - A "type" field with value "true-false"
     
     Please ensure the output doesn't contain any additional formatting like \`\`\`.`;
 };
@@ -88,12 +89,30 @@ export const generateQuestionsHandler = async (
 ): Promise<any> => {
   try {
     const settings: GenerateQuestionsWithSettings = req.body;
+    // const user = req.user;
+
+    // if (!user?.id) {
+    //   return res.status(401).json({ 
+    //     error: "Authentication required." 
+    //   });
+    // }
+
+    // // Check credits
+    // const credits = await getUserCreditsService(user.id);
+    // if (credits.normal_quiz_credits <= 0) {
+    //   return res.status(403).json({ 
+    //     error: "Insufficient credits. Please purchase more credits to generate quizzes." 
+    //   });
+    // }
+
 
     if (settings.questionCount > 20) {
       return res.status(400).json({ 
         error: "The maximum number of questions is 20." 
       });
     }
+
+    
 
     const questions = await GenerateQuestions(settings);
     return res.json(questions);

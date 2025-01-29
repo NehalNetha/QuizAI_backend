@@ -8,6 +8,7 @@ import quizRouter from './routes/quiz_router';
 import { initializeGameSockets } from './controllers/game_controller';
 import fileRouter from './routes/file_question_router';
 import dashboardRouter from './routes/dashboard_router';
+import creditsRouter from './routes/credits_router';
 
 dotenv.config();
 
@@ -24,7 +25,7 @@ app.use(express.json());
 
 app.use(cors({
   origin: 'http://localhost:3000',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
   exposedHeaders: ['Content-Length', 'Content-Type'] // Add this line
@@ -40,6 +41,8 @@ app.use('/api', quizRouter);
 app.use("/api", questionRouter)
 app.use("/api", fileRouter)
 app.use("/api", dashboardRouter)
+app.use("/api", creditsRouter)
+
 
 
 app.get('/hello/:name', (req: Request, res: Response) => {
