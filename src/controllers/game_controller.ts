@@ -1,6 +1,5 @@
 import { Server, Socket } from 'socket.io';
-import { updateDashboardStats } from './dashboardStats';
-import { getDashboardStats } from './dashboardStats';
+
 
 
 interface GameRoom {
@@ -71,16 +70,7 @@ export const initializeGameSockets = (io: Server) => {
             });
             
             // Update total players in dashboard stats
-            try {
-                const hostId = room.hostId;
-                const stats = await getDashboardStats(hostId);
-                await updateDashboardStats(hostId, {
-                    total_players: (stats.total_players || 0) + 1
-                });
-            } catch (error) {
-                console.error('Error updating player stats:', error);
-            }
-
+            
             socket.join(roomCode);
 
             socket.emit('joined-game', { 
@@ -320,5 +310,4 @@ function getLeaderboard(room: GameRoom) {
             position: index + 1
         }));
 }
-
 
