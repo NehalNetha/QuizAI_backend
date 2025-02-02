@@ -5,10 +5,10 @@ import questionRouter from './routes/question_router';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import quizRouter from './routes/quiz_router';
-import { initializeGameSockets } from './controllers/game_controller';
 import fileRouter from './routes/file_question_router';
 import dashboardRouter from './routes/dashboard_router';
 import creditsRouter from './routes/credits_router';
+import { initializeGameSockets } from './controllers/supabase_game_controller';
 
 dotenv.config();
 
