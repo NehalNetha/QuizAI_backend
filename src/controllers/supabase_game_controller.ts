@@ -149,25 +149,34 @@ export const initializeGameSockets = (io: Server) => {
 
             socket.join(roomCode);
 
+            // Filter out any existing entries for this player or host
+            let updatedPlayers = room.players.filter((p: any) => {
+                if (isHost) {
+                    return p.name !== 'Host';
+                }
+                return p.name !== playerName;
+            });
+
             if (isHost) {
                 console.log('[Server] Host joined with socket ID:', socket.id);
                 await supabase
                     .from('game_rooms')
                     .update({ host_id: socket.id })
                     .eq('room_code', roomCode);
-            }
-
-            const existingPlayerIndex = room.players.findIndex((p: any) => p.name === playerName);
-            const updatedPlayers = [...room.players];
-
-            if (existingPlayerIndex === -1) {
+                
+                // Add host only if not present
+                updatedPlayers.push({
+                    id: socket.id,
+                    name: 'Host',
+                    score: 0
+                });
+            } else {
+                // Add player only if not already in the list
                 updatedPlayers.push({
                     id: socket.id,
                     name: playerName,
                     score: 0
                 });
-            } else {
-                updatedPlayers[existingPlayerIndex].id = socket.id;
             }
 
             await supabase
@@ -477,8 +486,18 @@ function getAnswerDistribution(room: GameRoom) {
 }
 
 function getLeaderboard(room: GameRoom) {
-    return room.players
-        .filter(p => p.id !== room.hostId)
+    // Filter out host and duplicate names
+    const uniquePlayers = room.players
+        .filter(p => p.id !== room.hostId && p.name !== 'Host')
+        .reduce((acc: Player[], current) => {
+            const exists = acc.find(p => p.name === current.name);
+            if (!exists) {
+                acc.push(current);
+            }
+            return acc;
+        }, []);
+
+    return uniquePlayers
         .sort((a, b) => b.score - a.score)
         .map((player, index) => ({
             name: player.name,
