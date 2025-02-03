@@ -3,7 +3,6 @@ import { GenerateQuestionsWithSettings } from '../types/questions';
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import dotenv from 'dotenv';
-import { getUserCreditsService } from '../config/credits_service';
 dotenv.config();
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
@@ -15,6 +14,7 @@ const buildPrompt = (settings: GenerateQuestionsWithSettings): string => {
     questionType,
     difficulty,
     optionsCount,
+    systemPrompt, // Add this line
   } = settings;
 
   const typePrompt = questionType === "mixed"
@@ -29,11 +29,15 @@ const buildPrompt = (settings: GenerateQuestionsWithSettings): string => {
     ? `For multiple-choice questions, provide exactly ${optionsCount} options for each question.`
     : "";
 
+  // Add custom system prompt if provided
+  const customInstructions = systemPrompt ? `\nAdditional instructions: ${systemPrompt}` : "";
+
   return `You are an expert in creating various types of questions.
     Generate exactly ${questionCount} questions based on the provided topic.
     ${typePrompt}
     ${difficultyPrompt}
     ${optionsPrompt}
+    ${customInstructions}
     Format the output as a JSON array of question objects.
     
     Each question object should follow these rules:

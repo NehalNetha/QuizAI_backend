@@ -4,6 +4,7 @@ export interface GenerateQuestionsWithSettings {
     questionCount: number;
     difficulty?: string;
     optionsCount?: number;
+    systemPrompt?: string;
   }
   
   export interface QuestionBase {

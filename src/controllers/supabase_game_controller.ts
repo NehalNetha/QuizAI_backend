@@ -39,10 +39,8 @@ export const initializeGameSockets = (io: Server) => {
         .on('postgres_changes', 
             { event: '*', schema: 'public', table: 'game_rooms' },
             (payload: RealtimePostgresChangesPayload<GameRoomRecord>) => {
-                console.log('[Realtime] Received change:', payload.eventType, payload.new);
                 const roomCode = payload.new && 'room_code' in payload.new ? payload.new.room_code : undefined;
                 if (roomCode) {
-                    console.log('[Realtime] Emitting game-state-updated for room:', roomCode);
                     io.to(roomCode).emit('game-state-updated', payload.new);
                 }
             }
@@ -51,17 +49,18 @@ export const initializeGameSockets = (io: Server) => {
 
     io.on('connection', (socket: Socket) => {
         socket.on('create-game', async (quizData: any) => {
-            console.log('[Create Game] Creating new game with data:', { 
-                questionCount: quizData.questions.length,
-                hostId: socket.id 
-            });
             const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
             const normalizedQuestions = quizData.questions.map((q: any) => ({
                 ...q,
-                id: q.id || Math.random().toString(36).substr(2, 9),
-                correct_answer: q.correctAnswer
+                id: q.id || Math.random().toString(36).substring(2, 9), // Fix: use substring instead of substr
+                correctAnswer: q.correctAnswer
             }));
+
+            // Log the normalized questions to verify IDs are present
+            console.log('[Create Game] Normalized questions:', 
+                normalizedQuestions.map((q: any)=> ({ id: q.id, question: q.question }))
+            );
 
             const { error } = await supabase
                 .from('game_rooms')
@@ -93,7 +92,6 @@ export const initializeGameSockets = (io: Server) => {
         });
 
         socket.on('join-game', async (roomCode: string, playerName: string) => {
-            console.log('[Join Game] Player joining:', { roomCode, playerName });
             const { data: room, error } = await supabase
                 .from('game_rooms')
                 .select('*')
@@ -158,7 +156,6 @@ export const initializeGameSockets = (io: Server) => {
             });
 
             if (isHost) {
-                console.log('[Server] Host joined with socket ID:', socket.id);
                 await supabase
                     .from('game_rooms')
                     .update({ host_id: socket.id })
@@ -185,7 +182,13 @@ export const initializeGameSockets = (io: Server) => {
                 .eq('room_code', roomCode);
 
             socket.emit('game-state', {
-                questions: room.quiz.questions,
+                questions: room.quiz.questions.map((q: any) => ({
+                    ...q,
+                    id: q.id,  // Ensure ID is included
+                    question: q.question,
+                    options: q.options,
+                    type: q.type
+                })),
                 currentQuestion: room.current_question,
                 timeRemaining: room.time_remaining,
                 players: updatedPlayers
@@ -193,7 +196,6 @@ export const initializeGameSockets = (io: Server) => {
         });
 
         socket.on('start-game', async ({ roomCode, questions, settings }) => {
-            console.log('[Start Game] Starting game:', { roomCode, questionCount: questions?.length });
             const { data: room } = await supabase
                 .from('game_rooms')
                 .select('*')
@@ -202,12 +204,18 @@ export const initializeGameSockets = (io: Server) => {
 
             if (!room || socket.id !== room.host_id) return;
 
+            // Ensure questions have IDs
+            const normalizedQuestions = questions.map((q: any) => ({
+                ...q,
+                id: q.id || Math.random().toString(36).substring(2, 9)
+            }));
+
             // First update game state to countdown
             await supabase
                 .from('game_rooms')
                 .update({ 
                     game_state: 'countdown',
-                    quiz: { questions },  // Store questions immediately
+                    quiz: { questions: normalizedQuestions },  // Store normalized questions
                     settings
                 })
                 .eq('room_code', roomCode);
@@ -240,7 +248,7 @@ export const initializeGameSockets = (io: Server) => {
                         gameState: 'playing',
                         currentQuestion: 0,
                         timeRemaining: settings?.timeLimit || 30,
-                        questions: questions
+                        questions: normalizedQuestions
                     });
 
                     startGameTimer(io, roomCode, settings?.timeLimit || 30, timers);
@@ -248,55 +256,144 @@ export const initializeGameSockets = (io: Server) => {
             }, 1000);
         });
 
-        socket.on('submit-answer', async ({ roomCode, answer, questionId, timeLeft }) => {
+        socket.on('submit-answer', async ({ roomCode, answer, questionId, timeLeft, playerName }) => {
             console.log('[Submit Answer] Processing submission:', {
                 roomCode,
                 answer,
                 questionId,
                 timeLeft,
-                playerId: socket.id
+                playerId: socket.id,
+                playerName
             });
 
-            const { data: room } = await supabase
-                .from('game_rooms')
-                .select('*')
-                .eq('room_code', roomCode)
-                .single();
+            try {
+                // Get the game room data
+                const { data: room } = await supabase
+                    .from('game_rooms')
+                    .select('*')
+                    .eq('room_code', roomCode)
+                    .single();
 
-            if (!room || socket.id === room.host_id) return;
+                if (!room) {
+                    throw new Error('Game room not found');
+                }
 
-            const playerIndex = room.players.findIndex((p: any) => p.id === socket.id);
-            if (playerIndex === -1) return;
+                // Find player by name instead of socket.id
+                const player = room.players.find((p: any) => p.name === playerName && p.name !== 'Host');
+                if (!player) {
+                    throw new Error('Player not found in room');
+                }
 
-            const currentQuestion = room.quiz.questions[room.current_question];
-            if (currentQuestion.id !== questionId) return;
+                // Update the player's socket ID
+                const playersWithUpdatedId = room.players.map((p: any) => {
+                    if (p.name === playerName && p.name !== 'Host') {
+                        return { ...p, id: socket.id };
+                    }
+                    return p;
+                });
 
-            const isCorrect = answer === currentQuestion.correctAnswer;
-            const basePoints = 1000;
-            const timeBonus = Math.floor((timeLeft / 30) * 1000);
-            const points = isCorrect ? basePoints + timeBonus : 0;
+                // Update the room with new socket ID
+                await supabase
+                    .from('game_rooms')
+                    .update({ players: playersWithUpdatedId })
+                    .eq('room_code', roomCode);
 
-            const updatedPlayers = [...room.players];
-            updatedPlayers[playerIndex] = {
-                ...updatedPlayers[playerIndex],
-                score: updatedPlayers[playerIndex].score + points,
-                currentAnswer: answer
-            };
+                const currentQuestion = room.quiz.questions[room.current_question];
+                if (!currentQuestion) {
+                    throw new Error('Current question not found');
+                }
 
-            await supabase
-                .from('game_rooms')
-                .update({ players: updatedPlayers })
-                .eq('room_code', roomCode);
+                const isCorrect = answer === currentQuestion.correctAnswer;
+                const basePoints = 1000;
+                const timeBonus = Math.floor((timeLeft / 30) * 1000);
+                const points = isCorrect ? basePoints + timeBonus : 0;
 
-            io.to(roomCode).emit('answer-submitted', {
-                playerName: room.players[playerIndex].name,
-                answer,
-                isCorrect,
-                points,
-                correctAnswer: currentQuestion.correctAnswer,
-                leaderboard: getLeaderboard(room),
-                answerDistribution: getAnswerDistribution(room)
-            });
+                // Use transaction for atomic updates
+                const { data: submission, error: submissionError } = await supabase
+                    .from('player_submissions')
+                    .upsert({
+                        room_code: roomCode,
+                        player_id: socket.id,
+                        player_name: player.name,
+                        question_id: questionId || currentQuestion.id,
+                        answer: answer,
+                        score: points,
+                        time_taken: 30 - timeLeft
+                    }, {
+                        onConflict: 'room_code,player_id,question_id'
+                    })
+                    .select()
+                    .single();
+
+                if (submissionError) {
+                    throw submissionError;
+                }
+
+                // Update player's score in the room
+                const updatedPlayers = playersWithUpdatedId.map((p: any) => {
+                    if (p.name === playerName) {  // Change from p.id === socket.id to p.name === playerName
+                        return {
+                            ...p,
+                            score: (p.score || 0) + points,
+                            currentAnswer: answer
+                        };
+                    }
+                    return p;
+                });
+
+                const { error: updateError } = await supabase
+                    .from('game_rooms')
+                    .update({ 
+                        players: updatedPlayers
+                    })
+                    .eq('room_code', roomCode);
+
+                if (updateError) {
+                    throw updateError;
+                }
+
+                // Get updated submissions for distribution calculation
+                const { data: submissions } = await supabase
+                    .from('player_submissions')
+                    .select('*')
+                    .eq('room_code', roomCode)
+                    .eq('question_id', questionId || currentQuestion.id);
+
+                // Calculate answer distribution
+                const answerDist = currentQuestion.options.map((option: string) => {
+                    const count = (submissions || []).filter(s => s.answer === option).length;
+                    const total = submissions?.length || 0;
+                    const percentage = total > 0 ? (count / total) * 100 : 0;
+                    return { option, count, percentage };
+                });
+
+                // Emit results to all players
+                io.to(roomCode).emit('answer-submitted', {
+                    playerName: player.name,
+                    answer,
+                    isCorrect,
+                    points,
+                    correctAnswer: currentQuestion.correctAnswer,
+                    leaderboard: getLeaderboard(room),
+                    answerDistribution: answerDist
+                });
+
+                // Send acknowledgment to the submitting player
+                socket.emit('answer-received', {
+                    playerName: player.name,
+                    received: true,
+                    isCorrect,
+                    points,
+                    newScore: (player.score || 0) + points
+                });
+
+            } catch (error) {
+                console.error('[Submit Answer] Error:', error);
+                socket.emit('answer-received', {
+                    received: false,
+                    error: 'Failed to submit answer'
+                });
+            }
         });
 
         socket.on('show-leaderboard', async ({ roomCode }) => {
@@ -357,7 +454,10 @@ export const initializeGameSockets = (io: Server) => {
                     currentQuestion: nextQuestionIndex,
                     timeRemaining: room.settings?.timeLimit || 30,
                     gameState: 'playing',
-                    question: room.quiz.questions[nextQuestionIndex]
+                    question: {
+                        ...room.quiz.questions[nextQuestionIndex],
+                        id: room.quiz.questions[nextQuestionIndex].id  // Ensure ID is included
+                    }
                 });
 
                 startGameTimer(io, roomCode, room.settings?.timeLimit || 30, timers);
