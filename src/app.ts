@@ -12,6 +12,13 @@ import { initializeGameSockets } from './controllers/supabase_game_controller';
 
 dotenv.config();
 
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://quiz-ai-delta.vercel.app',
+  "https://quizlightyear.vercel.app/"
+];
+
+
 const app: Express = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
