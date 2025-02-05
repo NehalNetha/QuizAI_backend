@@ -397,6 +397,54 @@ export const initializeGameSockets = (io: Server) => {
             }
         });
 
+
+        socket.on('skip-question', async ({ roomCode }) => {
+            const { data: room } = await supabase
+                .from('game_rooms')
+                .select('*')
+                .eq('room_code', roomCode)
+                .single();
+
+            if (!room || socket.id !== room.host_id) return;
+
+            // Clear the timer if it exists
+            if (timers.has(roomCode)) {
+                clearInterval(timers.get(roomCode));
+                timers.delete(roomCode);
+            }
+
+            // Update game state to answer reveal
+            await supabase
+                .from('game_rooms')
+                .update({ 
+                    time_remaining: 0,
+                    game_state: 'answer_reveal'
+                })
+                .eq('room_code', roomCode);
+
+            // Emit to all clients including host
+            io.to(roomCode).emit('question-skipped');
+
+            // Get answer distribution and emit answer reveal
+            const currentQuestion = room.quiz.questions[room.current_question];
+            const answerDistribution = room.players.reduce((acc: any, player: any) => {
+                if (player.currentAnswer) {
+                    acc[player.currentAnswer] = (acc[player.currentAnswer] || 0) + 1;
+                }
+                return acc;
+            }, {});
+
+            io.to(roomCode).emit('answer-reveal', {
+                correctAnswer: currentQuestion.correctAnswer,
+                answers: room.players.map((p: any) => ({
+                    playerId: p.id,
+                    playerName: p.name,
+                    answer: p.currentAnswer
+                })),
+                answerDistribution
+            });
+        });
+
         socket.on('show-leaderboard', async ({ roomCode }) => {
             const { data: room } = await supabase
                 .from('game_rooms')
