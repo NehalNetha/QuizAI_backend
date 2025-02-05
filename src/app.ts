@@ -15,7 +15,8 @@ dotenv.config();
 const allowedOrigins = [
   'http://localhost:3000',
   'https://quiz-ai-delta.vercel.app',
-  "https://quizlightyear.vercel.app/"
+  'https://quizlightyear.vercel.app/',
+  
 ];
 
 

@@ -305,7 +305,7 @@ export const initializeGameSockets = (io: Server) => {
 
                 const isCorrect = answer === currentQuestion.correctAnswer;
                 const basePoints = 1000;
-                const timeBonus = Math.floor((timeLeft / 30) * 1000);
+                const timeBonus = Math.floor((timeLeft / 30) * 500); 
                 const points = isCorrect ? basePoints + timeBonus : 0;
 
                 // Use transaction for atomic updates
@@ -340,6 +340,7 @@ export const initializeGameSockets = (io: Server) => {
                     }
                     return p;
                 });
+                
 
                 const { error: updateError } = await supabase
                     .from('game_rooms')
@@ -544,21 +545,25 @@ function startGameTimer(io: Server, roomCode: string, timeLimit: number, timers:
         if (timeRemaining <= 0) {
             clearInterval(timer);
             timers.delete(roomCode);
-
+        
             const { data: room } = await supabase
                 .from('game_rooms')
                 .select('*')
                 .eq('room_code', roomCode)
                 .single();
-
+        
             if (room) {
+                const currentQuestion = room.quiz.questions[room.current_question];
+                const answerDistribution = getAnswerDistribution(room);
+        
                 io.to(roomCode).emit('answer-reveal', {
-                    correctAnswer: room.quiz.questions[room.current_question].correctAnswer,
-                    answers: room.players.map((p: any)  => ({
+                    correctAnswer: currentQuestion.correctAnswer,
+                    answers: room.players.map((p: any) => ({
                         playerId: p.id,
                         playerName: p.name,
                         answer: p.currentAnswer
-                    }))
+                    })),
+                    answerDistribution // Include answer distribution
                 });
             }
         }
