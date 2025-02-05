@@ -21,7 +21,7 @@ const io = new Server(httpServer, {
         origin: [
           'http://localhost:3000',
           'https://quiz-ai-delta.vercel.app',
-          'https://quizlightyear.vercel.app/',
+          'https://quizlightyear.vercel.app',
           
         ],
         methods: ["GET", "POST"]
@@ -34,7 +34,7 @@ app.use(cors({
   origin: [
     'http://localhost:3000',
     'https://quiz-ai-delta.vercel.app',
-    'https://quizlightyear.vercel.app/',
+    'https://quizlightyear.vercel.app',
     
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
